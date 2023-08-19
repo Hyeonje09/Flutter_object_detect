@@ -93,52 +93,83 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> showImagePopup() async {
     setState(() {
-      _image = _image; // 팝업이 열릴 때에만 이미지 할당
-      _popupOpen = true; // 팝업이 열림을 나타냄
+      _popupOpen = true;
     });
 
     await showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext context) {
-        return Dialog(
-          child: Container(
-            padding: EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _image != null
-                    ? Image.file(
-                  _image!,
-                  fit: BoxFit.cover,
-                )
-                    : Container(),
-                SizedBox(height: 16),
-                _prediction.isNotEmpty
-                    ? Column(
-                  children: _prediction.map((prediction) {
-                    return Text(
-                      "Prediction: $prediction",
-                      style: TextStyle(fontSize: 16),
-                    );
-                  }).toList(),
-                )
-                    : Container(),
-                ElevatedButton(
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    setState(() {
-                      _image = null; // 팝업이 닫힐 때 이미지 초기화
-                      _popupOpen = false; // 팝업이 닫힘을 나타냄
-                    });
-                  },
-                  child: Text("Close"),
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Dialog(
+              child: Container(
+                padding: EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _image != null
+                        ? Image.file(
+                      _image!,
+                      fit: BoxFit.cover,
+                    )
+                        : Container(),
+                    SizedBox(height: 16),
+                    _prediction.isNotEmpty
+                        ? Column(
+                      children: _prediction.map((prediction) {
+                        return Text(
+                          "Prediction: $prediction",
+                          style: TextStyle(fontSize: 16),
+                        );
+                      }).toList(),
+                    )
+                        : Container(),
+                    ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          _popupOpen = false; // Set popup state to false.
+                        });
+                        Navigator.of(context).pop(); // Close the dialog.
+                      },
+                      child: Text("OK"),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                        setState(() {
+                          _image = null;
+                          _popupOpen = false;
+                        });
+                        runObjectDetection().then((_) {
+                          if (objDetect.isNotEmpty) {
+                            ResultObjectDetection? highestScorePrediction =
+                            objDetect.reduce((a, b) => a!.score > b!.score ? a : b);
+                            if (highestScorePrediction != null) {
+                              String prediction =
+                                  "${highestScorePrediction.className} (${highestScorePrediction.score.toStringAsFixed(2)})";
+                              setState(() {
+                                _prediction.add(prediction);
+                              });
+                            }
+                          }
+                          showImagePopup();
+                        });
+                      },
+                      child: Text("Retry"),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
-    );
+    ).then((_) {
+      setState(() {
+        _popupOpen = false; // Close the popup after it's dismissed.
+      });
+    });
   }
 
   @override
@@ -146,86 +177,61 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text("OBJECT DETECTOR APP")),
       backgroundColor: Colors.white,
-      body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            !firststate
-                ? !message
-                ? LoaderState()
-                : Text("Select the Camera to Begin Detections")
-                : Container(
-              width: 416,
-              height: 416,
-              color: _popupOpen ? Colors.white : null, // 팝업이 열려있을 때는 배경을 흰색으로 설정
-              child: Stack(
+      body: Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: Colors.white,
+              child: _image != null
+                  ? Image.file(
+                _image!,
+                fit: BoxFit.contain,
+              )
+                  : null,
+            ),
+          ),
+          Expanded(
+            flex: 1,
+            child: Container(
+              width: double.infinity,
+              height: double.infinity,
+              color: Colors.white,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  Positioned.fill(
-                    child: _popupOpen
-                        ? Container() // 팝업이 열려있을 때는 이미지를 출력하지 않음
-                        : _image != null
-                        ? Image.file(
-                      _image!,
-                      fit: BoxFit.cover,
-                    )
-                        : Container(),
-                  ),
-                  Positioned.fill(
-                    child: _popupOpen
-                        ? Container() // 팝업이 열려있을 때는 이미지를 출력하지 않음
-                        : _objectModel.renderBoxesOnImage(
-                      _image!,
-                      objDetect,
+                  if (_prediction.isNotEmpty)
+                    Text(
+                      _prediction.last,
+                      style: TextStyle(fontSize: 16),
                     ),
-                  ),
-                  Positioned(
-                    // Adjust the position according to your needs
-                    top: 20,
-                    left: 20,
-                    child: Container(
-                      width: 100,
-                      height: 100,
-                      child: _image != null
-                          ? Image.file(
-                        _image!,
-                        fit: BoxFit.cover,
-                      )
-                          : Container(),
-                    ),
-                  ),
                 ],
               ),
             ),
-            Center(
-              child: Visibility(
-                visible: _imagePrediction != null,
-                child: Text("$_imagePrediction"),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                runObjectDetection().then((_) {
-                  // Set the prediction result
-                  if (objDetect.isNotEmpty) {
-                    ResultObjectDetection? highestScorePrediction =
-                    objDetect.reduce((a, b) =>
-                    a!.score > b!.score ? a : b);
-                    if (highestScorePrediction != null) {
-                      String prediction =
-                          "${highestScorePrediction.className} (${highestScorePrediction.score.toStringAsFixed(2)})";
-                      setState(() {
-                        _prediction.add(prediction);
-                      });
-                    }
-                  }
-                  // Show the image popup
-                  showImagePopup();
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          runObjectDetection().then((_) {
+            if (objDetect.isNotEmpty) {
+              ResultObjectDetection? highestScorePrediction =
+              objDetect.reduce((a, b) => a!.score > b!.score ? a : b);
+              if (highestScorePrediction != null) {
+                String prediction =
+                    "${highestScorePrediction.className} (${highestScorePrediction.score.toStringAsFixed(2)})";
+                setState(() {
+                  _prediction.add(prediction);
                 });
-              },
-              child: const Icon(Icons.camera),
-            ),
-          ],
-        ),
+              }
+            }
+            showImagePopup();
+          });
+        },
+        child: const Icon(Icons.camera),
       ),
     );
   }
